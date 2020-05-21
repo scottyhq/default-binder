@@ -1,0 +1,47 @@
+name: Repository Dispatch
+on:
+  repository_dispatch:
+    types: [newtag]
+
+jobs:
+  newtag:
+    runs-on: ubuntu-latest
+    if: github.repository == 'scottyhq/default-binder'
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v2
+
+      - name: Set Environment Variables
+        run: |
+          NEWTAG=${{ github.event.client_payload.tag }}
+          PR_BRANCH="upgrade-${{ steps.latest_version.outputs.version }}"
+          echo "::set-env name=NEWTAG::${NEWTAG}"
+          echo "::set-env name=PR_BRANCH::${PR_BRANCH}"
+
+      - name: Update environment.yml pangeo-notebook
+        id: find_replace
+        uses: jacobtomlinson/gha-find-replace@0.1.1
+        with:
+          include: "environment.yml"
+          find: "pangeo-notebook=.*"
+          replace: "pangeo-notebook=${{ env.LATEST_RELEASE }}"
+
+      - name: Update Dockerfile Tag
+        id: find_replace
+        uses: jacobtomlinson/gha-find-replace@0.1.1
+        with:
+          include: "Dockerfile"
+          find: "FROM pangeo/base-image:.*"
+          replace: "FROM pangeo/base-image:${{ env.LATEST_RELEASE }}"
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v2
+        with:
+          committer: Pangeo Bot <pangeo-bot@users.noreply.github.com>
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "sync with pangeo-docker-images"
+          title: "Update pangeo-notebook metapackage version to ${{ env.NEWTAG }}"
+          branch: ${{ env.PR_BRANCH }}
+          body: |
+            A new pangeo docker image has been detected.
+            Updated `environment.yml` and `Dockerfile` to use `${{ env.NEWTAG }}`.
